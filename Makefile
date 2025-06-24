@@ -1,4 +1,4 @@
-.PHONY: help start-kafka stop-kafka create-topic
+.PHONY: help start stop create-topic
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
