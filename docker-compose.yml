@@ -43,20 +43,74 @@ services:
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
       KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
 
+  # Kafka Connect with Debezium
+  kafka-connect:
+    image: debezium/connect:2.4
+    hostname: kafka-connect
+    container_name: kafka-connect
+    depends_on:
+      - zookeeper
+      - kafka
+      - postgres
+    ports:
+      - "8086:8083"
+    environment:
+      BOOTSTRAP_SERVERS: kafka:29092
+      GROUP_ID: kafka-connect-cluster
+      CONFIG_STORAGE_TOPIC: docker-connect-configs
+      OFFSET_STORAGE_TOPIC: docker-connect-offsets
+      STATUS_STORAGE_TOPIC: docker-connect-status
+      # Replication factors for a single broker setup
+      CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      STATUS_STORAGE_REPLICATION_FACTOR: 1
+      # Topic creation settings
+      CONNECT_TOPIC_CREATION_ENABLE: "true"
+      # Configure the number of partitions for auto-created topics
+      CONNECT_TOPIC_CREATION_DEFAULT_PARTITIONS: 3
+      CONNECT_TOPIC_CREATION_DEFAULT_REPLICATION_FACTOR: 1
+      # Worker settings
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+      CONNECT_REST_PORT: 8083
+      CONNECT_PLUGIN_PATH: "/kafka/connect,/usr/share/java"
+      # Key and value converters
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+      # Internal key and value converters (for offset/config storage)
+      CONNECT_INTERNAL_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_INTERNAL_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      # Logging
+      CONNECT_LOG4J_ROOT_LOGLEVEL: INFO
+      CONNECT_LOG4J_LOGGERS: org.apache.zookeeper=ERROR,org.I0Itec.zkclient=ERROR,org.reflections=ERROR
+    volumes:
+      - ./kafka-connect/connectors:/etc/kafka-connect/connectors
+    restart: unless-stopped
+
   # Database Services
   postgres:
     image: postgres:15
     container_name: postgres-db
+    hostname: postgres-db
     ports:
-      - "5434:5432"  # Changed external port to avoid conflict
+      - "5434:5432"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: gerges1020
-      POSTGRES_DB: postgres  # Default database
+      POSTGRES_DB: postgres
+      POSTGRES_MULTIPLE_DATABASES: outbox,outbox_write,outbox_read
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./init-multiple-databases.sh:/docker-entrypoint-initdb.d/init-multiple-databases.sh
+      - ./postgres-config/postgresql.conf:/etc/postgresql/postgresql.conf
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Monitoring Services
   prometheus:
