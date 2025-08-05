@@ -12,16 +12,26 @@ echo "Multiple databases created successfully!"
 
 # Create outbox table in the outbox database
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "outbox" <<-EOSQL
+    -- Create pgcrypto extension first for UUID generation
+    CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
     CREATE TABLE IF NOT EXISTS outbox (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         SUM INT NOT NULL,
         sent_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT NOW()
     );
+
     CREATE INDEX IF NOT EXISTS idx_outbox_sent_at ON outbox (sent_at);
+
+    -- Create publication AFTER table creation
+    CREATE PUBLICATION IF NOT EXISTS dbz_outbox_publication FOR TABLE outbox;
+
+    GRANT SELECT ON outbox TO $POSTGRES_USER;
+    GRANT USAGE, CREATE ON SCHEMA public TO $POSTGRES_USER;
 EOSQL
 
-echo "Table created in outbox database!"
+echo "Table and publication created in outbox database!"
 
 # Create tables in outbox_write database
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "outbox_write" <<-EOSQL
